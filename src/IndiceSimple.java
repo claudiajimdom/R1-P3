@@ -19,29 +19,19 @@ import org.apache.lucene.store.FSDirectory;
 
 public class IndiceSimple {
     private String indexPath = "./index";
-    private String docsPath = "./DataSet"; 
+    private String docsPath = "./data/simple"; 
     private IndexWriter writer;
-    private boolean create = true;
 
     public static void main(String[] args) {
         try{    
-            // Analizador a utilizar
             Analyzer analyzer = new StandardAnalyzer();
-
-            // Medida de similitud (modelo de recuperación) por defecto BM25
             Similarity similarity = new ClassicSimilarity();
 
-            // Llamada al constructor con los parámetros que correspondan
             IndiceSimple baseline = new IndiceSimple();
-
-            // Creamos el índice
             baseline.configurarIndice(analyzer, similarity);
-
-            // Insertar los documentos
             baseline.indexarDocumentos();
-
-            // Cerramos el índice
             baseline.close();
+
         } catch (IOException e) {
             System.out.println("Error during indexing process.");
             e.printStackTrace();
@@ -49,75 +39,55 @@ public class IndiceSimple {
     }
 
     public void configurarIndice(Analyzer analyzer, Similarity similarity) throws IOException {
-
         IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
         iwc.setSimilarity(similarity);
 
-        // Crear un nuevo índice cada vez que se ejecute
         iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
 
-        // Para insertar documentos a un índice existente:
-        // iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-
-        // Localización del índice
         Directory dir = FSDirectory.open(Paths.get(indexPath));
-
-        // Creamos el índice
         writer = new IndexWriter(dir, iwc);
-    }
-
-    private String leerDocumento(String path) throws IOException {
-        return Files.readString(Paths.get(path));
     }
 
     public void indexarDocumentos() throws IOException {
         Path docPath = Paths.get(docsPath);
-        // Para cada uno de los documentos
-        for (String d : Files.list(docPath).map(Path::toString).toList()) {
-            // Leemos el documento sobre un string
-            String cadena = leerDocumento(d);
-            
-            // Creamos el documento Lucene
-            Document doc = new Document();
 
-            int comaIndex = cadena.indexOf(',');
-            if (comaIndex == -1) {
-                System.out.println("Formato de documento incorrecto en: " + d);
-                continue; // saltar este documento
+        for (Path p : Files.list(docPath).toList()) {
+
+            var lineas = Files.readAllLines(p);
+            boolean primera = true;
+
+            for (String cadena : lineas) {
+
+                // Saltar cabecera
+                if (primera) {
+                    primera = false;
+                    continue;
+                }
+
+                int comaIndex = cadena.indexOf(',');
+                if (comaIndex == -1) {
+                    System.out.println("Formato incorrecto en: " + p);
+                    continue;
+                }
+
+                String aux = cadena.substring(0, comaIndex);
+
+                try {
+                    int valor = Integer.parseInt(aux);
+
+                    Document doc = new Document();
+                    doc.add(new IntPoint("ID", valor));
+                    doc.add(new StoredField("ID", valor));
+
+                    String cuerpo = cadena.substring(comaIndex + 1);
+                    doc.add(new TextField("Body", cuerpo, Field.Store.YES));
+
+                    writer.addDocument(doc);
+
+                } catch (NumberFormatException e) {
+                    System.out.println("Saltando línea no numérica: " + aux);
+                }
             }
-
-            // ---- Obtener campo entero desde cadena ----
-            Integer start;  // posición inicio del campo
-            Integer end;    // posición fin del campo
-
-            // Estas posiciones debes definirlas según el formato de tu texto:
-            start = 0; // posición inicio del campo
-            end = comaIndex;   // posición fin del campo
-
-            String aux = cadena.substring(start, end);
-            Integer valor = Integer.decode(aux);
-
-            // Almacenamos en el documento Lucene
-            doc.add(new IntPoint("ID", valor));
-            doc.add(new StoredField("ID", valor));
-
-            // ---- Obtener campo texto desde cadena ----
-            start = comaIndex + 1; // posición inicio del texto
-            end = cadena.length();   // posición fin del texto
-
-            String cuerpo = cadena.substring(start, end);
-
-            // Almacenamos en el documento Lucene
-            doc.add(new TextField("Body", cuerpo, Field.Store.YES));
-
-            // ---- Obtener más campos si es necesario ----
-            // ...
-
-            // Insertamos el documento Lucene en el índice
-            writer.addDocument(doc);
-
-            // Si lo que queremos es actualizar el documento:
-            // writer.updateDocument(new Term("ID", valor.toString()), doc);
         }
     }
 
@@ -130,6 +100,4 @@ public class IndiceSimple {
             e.printStackTrace();
         }
     }
-
 }
-    
