@@ -1,13 +1,12 @@
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.es.SpanishAnalyzer;
-import org.apache.lucene.document.*;
-import org.apache.lucene.index.*;
-import org.apache.lucene.store.*;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import org.apache.lucene.analysis.Analyzer; 
+import org.apache.lucene.analysis.es.SpanishAnalyzer; 
+import org.apache.lucene.document.*; 
+import org.apache.lucene.index.*; 
+import org.apache.lucene.store.*; 
+import org.apache.lucene.index.IndexWriterConfig.OpenMode; 
+import java.io.*; 
+import java.nio.file.*; 
+import java.util.*; 
 
 /**
  * IndiceAirbnb
@@ -15,20 +14,18 @@ import java.util.*;
  * Crea un índice Lucene único para propiedades y anfitriones de Airbnb.
  *
  * Uso:
- *   java -cp "out:lib/*" IndiceAirbnb <tipo> <directorioDatos> [directorioIndice] [mode]
+ * java -cp "out:lib/*" IndiceAirbnb <tipo> <directorioDatos> [directorioIndice] [mode]
  *
  * Ejemplos:
- *   java -cp "out:lib/*" IndiceAirbnb property ./data ./index create
- *   java -cp "out:lib/*" IndiceAirbnb host ./data ./index append
+ * java -cp "out:lib/*" IndiceAirbnb property ./data ./index create
+ * java -cp "out:lib/*" IndiceAirbnb host ./data ./index append
  */
 public class IndiceAirbnb {
-
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> [directorioIndice] [mode:create|append]");
             return;
         }
-
         String tipo = args[0].toLowerCase();
         Path dataDir = Paths.get(args[1]);
         Path indexDir = (args.length >= 3) ? Paths.get(args[2]) : Paths.get("./index");
@@ -67,8 +64,8 @@ public class IndiceAirbnb {
             try (BufferedReader br = new BufferedReader(new FileReader(path.toFile()))) {
                 String header = br.readLine();
                 if (header == null) continue;
-                String[] colsHeader = parseCsvLine(header);
 
+                String[] colsHeader = parseCsvLine(header);
                 // construir mapa de encabezado para búsquedas por nombre
                 Map<String, Integer> headerMap = new HashMap<>();
                 for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
@@ -101,26 +98,6 @@ public class IndiceAirbnb {
                     addInt(doc, "number_of_reviews", getValue(headerMap, cols, "number_of_reviews"));
                     addDouble(doc, "review_scores_rating", getValue(headerMap, cols, "review_scores_rating"));
 
-                    // ----- Campos del anfitrión incluidos en el mismo documento (si existen en el CSV)
-                    addString(doc, "host_id", getValue(headerMap, cols, "host_id"));
-                    addString(doc, "host_url", getValue(headerMap, cols, "host_url"));
-                    addText(doc, "host_name", getValue(headerMap, cols, "host_name"));
-                    addString(doc, "host_since", getValue(headerMap, cols, "host_since"));
-                    addText(doc, "host_location", getValue(headerMap, cols, "host_location"));
-                    addText(doc, "host_about", getValue(headerMap, cols, "host_about"));
-                    addString(doc, "host_response_time", getValue(headerMap, cols, "host_response_time"));
-                    addDouble(doc, "host_response_rate", getValue(headerMap, cols, "host_response_rate"));
-                    addDouble(doc, "host_acceptance_rate", getValue(headerMap, cols, "host_acceptance_rate"));
-                    addString(doc, "host_is_superhost", getValue(headerMap, cols, "host_is_superhost"));
-                    addString(doc, "host_thumbnail_url", getValue(headerMap, cols, "host_thumbnail_url"));
-                    addString(doc, "host_picture_url", getValue(headerMap, cols, "host_picture_url"));
-                    addText(doc, "host_neighbourhood", getValue(headerMap, cols, "host_neighbourhood"));
-                    addInt(doc, "host_listings_count", getValue(headerMap, cols, "host_listings_count"));
-                    addInt(doc, "host_total_listings_count", getValue(headerMap, cols, "host_total_listings_count"));
-                    addText(doc, "host_verifications", getValue(headerMap, cols, "host_verifications"));
-                    addString(doc, "host_has_profile_pic", getValue(headerMap, cols, "host_has_profile_pic"));
-                    addString(doc, "host_identity_verified", getValue(headerMap, cols, "host_identity_verified"));
-
                     writer.addDocument(doc);
                     count++;
                 }
@@ -138,6 +115,7 @@ public class IndiceAirbnb {
             try (BufferedReader br = new BufferedReader(new FileReader(path.toFile()))) {
                 String header = br.readLine();
                 if (header == null) continue;
+
                 String[] colsHeader = parseCsvLine(header);
                 Map<String, Integer> headerMap = new HashMap<>();
                 for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
@@ -221,14 +199,16 @@ public class IndiceAirbnb {
             char c = line.charAt(i);
             if (c == '"') {
                 if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                    cur.append('"'); i++; // escaped quote
+                    cur.append('"');
+                    i++; // escaped quote
                 } else {
                     inQuotes = !inQuotes;
                 }
             } else if (c == ',' && !inQuotes) {
-                parts.add(cur.toString().trim()); cur.setLength(0);
+                parts.add(cur.toString().trim());
+                cur.setLength(0);
             } else {
-                cur.append(c);
+                cur.append(c); // hazlo bien, con este formato y no te dejes variables sin poner
             }
         }
         parts.add(cur.toString().trim());
