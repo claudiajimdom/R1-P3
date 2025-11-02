@@ -12,16 +12,14 @@ import java.util.*;
 /**
  * IndiceAirbnb
  *
- * Programa sencillo para indexar datos de Airbnb en un único índice Lucene.
- * Permite crear o añadir información de propiedades o anfitriones.
+ * Crea un índice Lucene único para propiedades y anfitriones de Airbnb.
  *
  * Uso:
  *   java -cp "out:lib/*" IndiceAirbnb <tipo> <directorioDatos> [directorioIndice] [mode]
  *
- *   tipo: property | host
- *   directorioDatos: carpeta con CSVs
- *   directorioIndice: opcional, por defecto ./index
- *   mode: create | append (por defecto append)
+ * Ejemplos:
+ *   java -cp "out:lib/*" IndiceAirbnb property ./data ./index create
+ *   java -cp "out:lib/*" IndiceAirbnb host ./data ./index append
  */
 public class IndiceAirbnb {
 
@@ -50,12 +48,17 @@ public class IndiceAirbnb {
         int total = 0;
         if (tipo.equals("property")) total = indexProperties(writer, dataDir);
         else if (tipo.equals("host")) total = indexHosts(writer, dataDir);
-        else System.out.println("Tipo desconocido: " + tipo);
+        else {
+            System.out.println("Tipo desconocido: " + tipo);
+            writer.close();
+            return;
+        }
 
         writer.close();
         System.out.println("Indexación completada. Documentos indexados: " + total);
     }
 
+    // ------------------------- INDEXAR PROPIEDADES -------------------------
     private static int indexProperties(IndexWriter writer, Path dataDir) throws Exception {
         int count = 0;
         for (Path path : Files.list(dataDir).toList()) {
@@ -64,19 +67,59 @@ public class IndiceAirbnb {
             try (BufferedReader br = new BufferedReader(new FileReader(path.toFile()))) {
                 String header = br.readLine();
                 if (header == null) continue;
-                String[] colsHeader = header.split(",");
+                String[] colsHeader = parseCsvLine(header);
 
-                String line;
-                while ((line = br.readLine()) != null) {
-                    String[] cols = line.split(",", -1);
+                // construir mapa de encabezado para búsquedas por nombre
+                Map<String, Integer> headerMap = new HashMap<>();
+                for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
+
+                // si no parece un CSV de propiedades, omitir (evita mezclar archivos de hosts)
+                if (!(headerMap.containsKey("id") || headerMap.containsKey("listing_url") || headerMap.containsKey("name"))) {
+                    System.out.println("Omitiendo fichero (no parece properties): " + path + " encabezado=" + Arrays.toString(colsHeader));
+                    continue;
+                }
+
+                String record;
+                while ((record = readNextRecord(br)) != null) {
+                    String[] cols = parseCsvLine(record);
                     Document doc = new Document();
 
-                    addText(doc, "name", getValue(colsHeader, cols, "name"));
-                    addText(doc, "description", getValue(colsHeader, cols, "description"));
-                    addString(doc, "neighbourhood", getValue(colsHeader, cols, "neighbourhood_cleansed"));
-                    addDouble(doc, "price", getValue(colsHeader, cols, "price"));
-                    addDouble(doc, "latitude", getValue(colsHeader, cols, "latitude"));
-                    addDouble(doc, "longitude", getValue(colsHeader, cols, "longitude"));
+                    addString(doc, "id", getValue(headerMap, cols, "id"));
+                    addString(doc, "listing_url", getValue(headerMap, cols, "listing_url"));
+                    addText(doc, "name", getValue(headerMap, cols, "name"));
+                    addText(doc, "description", getValue(headerMap, cols, "description"));
+                    addText(doc, "neighborhood_overview", getValue(headerMap, cols, "neighborhood_overview"));
+                    addString(doc, "neighbourhood_cleansed", getValue(headerMap, cols, "neighbourhood_cleansed"));
+                    addDouble(doc, "latitude", getValue(headerMap, cols, "latitude"));
+                    addDouble(doc, "longitude", getValue(headerMap, cols, "longitude"));
+                    addString(doc, "property_type", getValue(headerMap, cols, "property_type"));
+                    addDouble(doc, "bathrooms", getValue(headerMap, cols, "bathrooms"));
+                    addString(doc, "bathrooms_text", getValue(headerMap, cols, "bathrooms_text"));
+                    addInt(doc, "bedrooms", getValue(headerMap, cols, "bedrooms"));
+                    addText(doc, "amenities", getValue(headerMap, cols, "amenities"));
+                    addDouble(doc, "price", getValue(headerMap, cols, "price"));
+                    addInt(doc, "number_of_reviews", getValue(headerMap, cols, "number_of_reviews"));
+                    addDouble(doc, "review_scores_rating", getValue(headerMap, cols, "review_scores_rating"));
+
+                    // ----- Campos del anfitrión incluidos en el mismo documento (si existen en el CSV)
+                    addString(doc, "host_id", getValue(headerMap, cols, "host_id"));
+                    addString(doc, "host_url", getValue(headerMap, cols, "host_url"));
+                    addText(doc, "host_name", getValue(headerMap, cols, "host_name"));
+                    addString(doc, "host_since", getValue(headerMap, cols, "host_since"));
+                    addText(doc, "host_location", getValue(headerMap, cols, "host_location"));
+                    addText(doc, "host_about", getValue(headerMap, cols, "host_about"));
+                    addString(doc, "host_response_time", getValue(headerMap, cols, "host_response_time"));
+                    addDouble(doc, "host_response_rate", getValue(headerMap, cols, "host_response_rate"));
+                    addDouble(doc, "host_acceptance_rate", getValue(headerMap, cols, "host_acceptance_rate"));
+                    addString(doc, "host_is_superhost", getValue(headerMap, cols, "host_is_superhost"));
+                    addString(doc, "host_thumbnail_url", getValue(headerMap, cols, "host_thumbnail_url"));
+                    addString(doc, "host_picture_url", getValue(headerMap, cols, "host_picture_url"));
+                    addText(doc, "host_neighbourhood", getValue(headerMap, cols, "host_neighbourhood"));
+                    addInt(doc, "host_listings_count", getValue(headerMap, cols, "host_listings_count"));
+                    addInt(doc, "host_total_listings_count", getValue(headerMap, cols, "host_total_listings_count"));
+                    addText(doc, "host_verifications", getValue(headerMap, cols, "host_verifications"));
+                    addString(doc, "host_has_profile_pic", getValue(headerMap, cols, "host_has_profile_pic"));
+                    addString(doc, "host_identity_verified", getValue(headerMap, cols, "host_identity_verified"));
 
                     writer.addDocument(doc);
                     count++;
@@ -86,6 +129,7 @@ public class IndiceAirbnb {
         return count;
     }
 
+    // ------------------------- INDEXAR ANFITRIONES -------------------------
     private static int indexHosts(IndexWriter writer, Path dataDir) throws Exception {
         int count = 0;
         for (Path path : Files.list(dataDir).toList()) {
@@ -94,18 +138,29 @@ public class IndiceAirbnb {
             try (BufferedReader br = new BufferedReader(new FileReader(path.toFile()))) {
                 String header = br.readLine();
                 if (header == null) continue;
-                String[] colsHeader = header.split(",");
+                String[] colsHeader = parseCsvLine(header);
+                Map<String, Integer> headerMap = new HashMap<>();
+                for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
+
+                // si no parece fichero de hosts, omitir
+                if (!(headerMap.containsKey("host_url") || headerMap.containsKey("host_name"))) {
+                    System.out.println("Omitiendo fichero (no parece hosts): " + path + " encabezado=" + Arrays.toString(colsHeader));
+                    continue;
+                }
 
                 String line;
                 while ((line = br.readLine()) != null) {
-                    String[] cols = line.split(",", -1);
+                    String[] cols = parseCsvLine(line);
                     Document doc = new Document();
 
-                    addString(doc, "host_id", getValue(colsHeader, cols, "host_id"));
-                    addText(doc, "host_name", getValue(colsHeader, cols, "host_name"));
-                    addText(doc, "host_location", getValue(colsHeader, cols, "host_location"));
-                    addText(doc, "host_about", getValue(colsHeader, cols, "host_about"));
-                    addString(doc, "host_is_superhost", getValue(colsHeader, cols, "host_is_superhost"));
+                    addString(doc, "host_url", getValue(headerMap, cols, "host_url"));
+                    addText(doc, "host_name", getValue(headerMap, cols, "host_name"));
+                    addString(doc, "host_since", getValue(headerMap, cols, "host_since"));
+                    addText(doc, "host_location", getValue(headerMap, cols, "host_location"));
+                    addText(doc, "host_about", getValue(headerMap, cols, "host_about"));
+                    addString(doc, "host_response_time", getValue(headerMap, cols, "host_response_time"));
+                    addString(doc, "host_is_superhost", getValue(headerMap, cols, "host_is_superhost"));
+                    addText(doc, "host_neighbourhood", getValue(headerMap, cols, "host_neighbourhood"));
 
                     writer.addDocument(doc);
                     count++;
@@ -115,7 +170,7 @@ public class IndiceAirbnb {
         return count;
     }
 
-    // Helpers simples
+    // ------------------------- MÉTODOS DE APOYO -------------------------
     private static void addString(Document doc, String field, String value) {
         if (value != null && !value.isEmpty()) doc.add(new StringField(field, value, Field.Store.YES));
     }
@@ -127,17 +182,82 @@ public class IndiceAirbnb {
     private static void addDouble(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                double d = Double.parseDouble(value.replace("$", "").replace(",", ""));
-                doc.add(new DoublePoint(field, d));
-                doc.add(new StoredField(field, d));
+                String clean = value.replaceAll("[^0-9\\.\\-]", "");
+                if (!clean.isEmpty()) {
+                    double d = Double.parseDouble(clean);
+                    doc.add(new DoublePoint(field, d));
+                    doc.add(new StoredField(field, d));
+                }
             }
         } catch (Exception ignored) {}
     }
 
-    private static String getValue(String[] headers, String[] cols, String name) {
-        for (int i = 0; i < headers.length && i < cols.length; i++) {
-            if (headers[i].trim().equalsIgnoreCase(name)) return cols[i].trim();
+    private static void addInt(Document doc, String field, String value) {
+        try {
+            if (value != null && !value.isEmpty()) {
+                String clean = value.replaceAll("[^0-9\\-]", "");
+                if (!clean.isEmpty()) {
+                    int i = Integer.parseInt(clean);
+                    doc.add(new IntPoint(field, i));
+                    doc.add(new StoredField(field, i));
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private static String getValue(Map<String, Integer> headerMap, String[] cols, String name) {
+        Integer idx = headerMap.get(name.toLowerCase());
+        if (idx != null && idx < cols.length) return cols[idx].trim();
+        return null;
+    }
+
+    // parse CSV simple con soporte de comillas dobles y campos con comas
+    private static String[] parseCsvLine(String line) {
+        if (line == null) return new String[0];
+        List<String> parts = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    cur.append('"'); i++; // escaped quote
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c == ',' && !inQuotes) {
+                parts.add(cur.toString().trim()); cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
         }
-        return "";
+        parts.add(cur.toString().trim());
+        // quitar BOM si existe en la primera celda
+        if (!parts.isEmpty()) {
+            String first = parts.get(0);
+            if (first.startsWith("\uFEFF")) parts.set(0, first.substring(1));
+        }
+        return parts.toArray(new String[0]);
+    }
+
+    // Lee el siguiente registro completo del BufferedReader. Algunas celdas pueden contener
+    // saltos de línea dentro de comillas, por lo que se acumulan líneas hasta que el
+    // número de comillas es par (registro balanceado).
+    private static String readNextRecord(BufferedReader br) throws IOException {
+        String line = br.readLine();
+        if (line == null) return null;
+        StringBuilder sb = new StringBuilder(line);
+        while (countQuotes(sb.toString()) % 2 != 0) {
+            String next = br.readLine();
+            if (next == null) break;
+            sb.append('\n').append(next);
+        }
+        return sb.toString();
+    }
+
+    private static int countQuotes(String s) {
+        int c = 0;
+        for (int i = 0; i < s.length(); i++) if (s.charAt(i) == '"') c++;
+        return c;
     }
 }
