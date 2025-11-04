@@ -1,5 +1,4 @@
 import org.apache.lucene.analysis.Analyzer;
-// <--- CORREGIDO: Cambiado de .es.SpanishAnalyzer a .en.EnglishAnalyzer
 import org.apache.lucene.analysis.en.EnglishAnalyzer; 
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
@@ -8,22 +7,10 @@ import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-// Importar NumberFormat y Locale para parsear números con '.'
 import java.text.NumberFormat;
 import java.util.Locale;
 
-/**
- * IndiceAirbnb
- *
- * Crea un índice Lucene único para propiedades y anfitriones de Airbnb.
- *
- * Uso:
- * java -cp "out:lib/*" IndiceAirbnb <tipo> <directorioDatos> [directorioIndice] [mode]
- *
- * Ejemplos:
- * java -cp "out:lib/*" IndiceAirbnb property ./data ./index create
- * java -cp "out:lib/*" IndiceAirbnb host ./data ./index append
- */
+
 public class IndiceAirbnb {
 
     // Parseador de números que SIEMPRE usa '.' como decimal (Locale.US)
