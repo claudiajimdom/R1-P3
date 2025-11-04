@@ -13,37 +13,39 @@ import java.util.Locale;
 
 public class IndiceAirbnb {
 
-    // Parseador de números que SIEMPRE usa '.' como decimal (Locale.US)
-    // Esto evita problemas si el sistema operativo está en español (que espera ',')
+    // Parseador de números que usa '.' como decimal (Locale.US)
     private static final NumberFormat numberParser = NumberFormat.getInstance(Locale.US);
 
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> [directorioIndice] [mode:create|append]");
+        if (args.length < 3) {
+            System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> [directorioIndice] [modo:create|append]");
             return;
         }
         String tipo = args[0].toLowerCase();
         Path dataDir = Paths.get(args[1]);
-        Path indexDir = (args.length >= 3) ? Paths.get(args[2]) : Paths.get("./index");
-        String mode = (args.length >= 4) ? args[3].toLowerCase() : "append";
+        Path indexDir = Paths.get(args[2]);
+        String mode =  args[3].toLowerCase();
 
         if (!Files.isDirectory(dataDir)) {
             System.out.println("Directorio de datos no encontrado: " + dataDir);
             return;
         }
 
-        // <--- CORREGIDO: Usar EnglishAnalyzer
+        //el csv está en inglés, así que usamos EnglishAnalyzer
         Analyzer analyzer = new EnglishAnalyzer();
         Directory directory = FSDirectory.open(indexDir);
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(mode.equals("create") ? OpenMode.CREATE : OpenMode.CREATE_OR_APPEND);
+        // Crear el IndexWriter para escribir datos ene el índice
         IndexWriter writer = new IndexWriter(directory, config);
 
         int total = 0;
-        if (tipo.equals("property")) total = indexProperties(writer, dataDir);
-        else if (tipo.equals("host")) total = indexHosts(writer, dataDir);
-        else {
+        if (tipo.equals("property")) {
+            total = indexProperties(writer, dataDir);
+        } else if (tipo.equals("host")) {
+            total = indexHosts(writer, dataDir);
+        } else {
             System.out.println("Tipo desconocido: " + tipo);
             writer.close();
             return;
@@ -68,14 +70,14 @@ public class IndiceAirbnb {
                 Map<String, Integer> headerMap = new HashMap<>();
                 for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
 
-                // si no parece un CSV de propiedades, omitir (evita mezclar archivos de hosts)
+        
                 if (!(headerMap.containsKey("id") || headerMap.containsKey("listing_url") || headerMap.containsKey("name"))) {
                     System.out.println("Omitiendo fichero (no parece properties): " + path + " encabezado=" + Arrays.toString(colsHeader));
                     continue;
                 }
 
                 String record;
-                while ((record = readNextRecord(br)) != null) { // Usa readNextRecord
+                while ((record = readNextRecord(br)) != null) { 
                     String[] cols = parseCsvLine(record);
                     Document doc = new Document();
 
@@ -155,20 +157,17 @@ public class IndiceAirbnb {
         if (value != null && !value.isEmpty()) doc.add(new TextField(field, value, Field.Store.YES));
     }
 
-    // Método addDouble corregido (usa Locale.US)
     private static void addDouble(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                // 1. Limpia todo lo que NO sea número, punto o guion
-                // Esto quita "$", ",", " baths", etc.
+                //Limpia todo lo que no sea número, punto o guion
                 String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    // 2. Maneja casos como "1." que resultan de "1 bath"
                     if (clean.endsWith(".")) {
                         clean = clean.substring(0, clean.length() - 1);
                     }
                     if (!clean.isEmpty()) {
-                        // 3. Usa el numberParser (Locale.US) para convertir el string
+                        // Usa el numberParser (Locale.US) para convertir el string
                         double d = numberParser.parse(clean).doubleValue();
                         doc.add(new DoublePoint(field, d));
                         doc.add(new StoredField(field, d));
@@ -184,16 +183,14 @@ public class IndiceAirbnb {
     private static void addInt(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                // 1. Limpia todo lo que NO sea número, punto o guion
+                //Limpia todo lo que NO sea número, punto o guion
                 String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    // 2. Maneja casos como "1." que resultan de "1 bedroom"
                     if (clean.endsWith(".")) {
                         clean = clean.substring(0, clean.length() - 1);
                     }
                     if (!clean.isEmpty()) {
-                        // 3. Usa el numberParser (Locale.US)
-                        // Parsea como número (ej. "1.0") y coge su valor (int)
+                        // Usa el numberParser (Locale.US)
                         int i = numberParser.parse(clean).intValue();
                         doc.add(new IntPoint(field, i));
                         doc.add(new StoredField(field, i));
