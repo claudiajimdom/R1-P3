@@ -1,0 +1,14 @@
+Manifest-Version: 1.0
+Extension-Name: org.apache.lucene
+Implementation-Vendor: The Apache Software Foundation
+Implementation-Title: org.apache.lucene
+Implementation-Version: 10.3.1 51190f35a16d2ce433139abfe0fd8365791b352a 
+ - 2025-10-02 09:50:16
+Specification-Vendor: The Apache Software Foundation
+Specification-Version: 10.3.1
+Specification-Title: Lucene Search Engine: suggest
+X-Compile-Source-JDK: 21
+X-Compile-Target-JDK: 21
+X-Build-JDK: 21.0.2 (Oracle Corporation 21.0.2+13-58)
+X-Build-OS: Mac OS X aarch64 15.7
+

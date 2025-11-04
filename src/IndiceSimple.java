@@ -18,7 +18,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 public class IndiceSimple {
-    private String indexPath = "./index";
+    private String indexPath = "./index_simple";
     private String docsPath = "./data/simple"; 
     private IndexWriter writer;
 
