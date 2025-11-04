@@ -1,12 +1,16 @@
-import org.apache.lucene.analysis.Analyzer; 
-import org.apache.lucene.analysis.es.SpanishAnalyzer; 
-import org.apache.lucene.document.*; 
-import org.apache.lucene.index.*; 
-import org.apache.lucene.store.*; 
-import org.apache.lucene.index.IndexWriterConfig.OpenMode; 
-import java.io.*; 
-import java.nio.file.*; 
-import java.util.*; 
+import org.apache.lucene.analysis.Analyzer;
+// <--- CORREGIDO: Cambiado de .es.SpanishAnalyzer a .en.EnglishAnalyzer
+import org.apache.lucene.analysis.en.EnglishAnalyzer; 
+import org.apache.lucene.document.*;
+import org.apache.lucene.index.*;
+import org.apache.lucene.store.*;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+// Importar NumberFormat y Locale para parsear números con '.'
+import java.text.NumberFormat;
+import java.util.Locale;
 
 /**
  * IndiceAirbnb
@@ -21,6 +25,12 @@ import java.util.*;
  * java -cp "out:lib/*" IndiceAirbnb host ./data ./index append
  */
 public class IndiceAirbnb {
+
+    // Parseador de números que SIEMPRE usa '.' como decimal (Locale.US)
+    // Esto evita problemas si el sistema operativo está en español (que espera ',')
+    private static final NumberFormat numberParser = NumberFormat.getInstance(Locale.US);
+
+
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> [directorioIndice] [mode:create|append]");
@@ -36,7 +46,8 @@ public class IndiceAirbnb {
             return;
         }
 
-        Analyzer analyzer = new SpanishAnalyzer();
+        // <--- CORREGIDO: Usar EnglishAnalyzer
+        Analyzer analyzer = new EnglishAnalyzer();
         Directory directory = FSDirectory.open(indexDir);
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(mode.equals("create") ? OpenMode.CREATE : OpenMode.CREATE_OR_APPEND);
@@ -77,7 +88,7 @@ public class IndiceAirbnb {
                 }
 
                 String record;
-                while ((record = readNextRecord(br)) != null) {
+                while ((record = readNextRecord(br)) != null) { // Usa readNextRecord
                     String[] cols = parseCsvLine(record);
                     Document doc = new Document();
 
@@ -127,7 +138,7 @@ public class IndiceAirbnb {
                 }
 
                 String line;
-                while ((line = br.readLine()) != null) {
+                while ((line = readNextRecord(br)) != null) { // Usar readNextRecord
                     String[] cols = parseCsvLine(line);
                     Document doc = new Document();
 
@@ -157,30 +168,54 @@ public class IndiceAirbnb {
         if (value != null && !value.isEmpty()) doc.add(new TextField(field, value, Field.Store.YES));
     }
 
+    // Método addDouble corregido (usa Locale.US)
     private static void addDouble(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
+                // 1. Limpia todo lo que NO sea número, punto o guion
+                // Esto quita "$", ",", " baths", etc.
                 String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    double d = Double.parseDouble(clean);
-                    doc.add(new DoublePoint(field, d));
-                    doc.add(new StoredField(field, d));
+                    // 2. Maneja casos como "1." que resultan de "1 bath"
+                    if (clean.endsWith(".")) {
+                        clean = clean.substring(0, clean.length() - 1);
+                    }
+                    if (!clean.isEmpty()) {
+                        // 3. Usa el numberParser (Locale.US) para convertir el string
+                        double d = numberParser.parse(clean).doubleValue();
+                        doc.add(new DoublePoint(field, d));
+                        doc.add(new StoredField(field, d));
+                    }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            System.err.println("Error parseando Double: " + value + " -> " + ignored.getMessage());
+        }
     }
 
+    // Método addInt 
     private static void addInt(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                String clean = value.replaceAll("[^0-9\\-]", "");
+                // 1. Limpia todo lo que NO sea número, punto o guion
+                String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    int i = Integer.parseInt(clean);
-                    doc.add(new IntPoint(field, i));
-                    doc.add(new StoredField(field, i));
+                    // 2. Maneja casos como "1." que resultan de "1 bedroom"
+                    if (clean.endsWith(".")) {
+                        clean = clean.substring(0, clean.length() - 1);
+                    }
+                    if (!clean.isEmpty()) {
+                        // 3. Usa el numberParser (Locale.US)
+                        // Parsea como número (ej. "1.0") y coge su valor (int)
+                        int i = numberParser.parse(clean).intValue();
+                        doc.add(new IntPoint(field, i));
+                        doc.add(new StoredField(field, i));
+                    }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            System.err.println("Error parseando Int: " + value + " -> " + ignored.getMessage());
+        }
     }
 
     private static String getValue(Map<String, Integer> headerMap, String[] cols, String name) {
@@ -189,7 +224,7 @@ public class IndiceAirbnb {
         return null;
     }
 
-    // parse CSV simple con soporte de comillas dobles y campos con comas
+    // parsea CSV simple con soporte de comillas dobles y campos con comas
     private static String[] parseCsvLine(String line) {
         if (line == null) return new String[0];
         List<String> parts = new ArrayList<>();
@@ -205,13 +240,16 @@ public class IndiceAirbnb {
                     inQuotes = !inQuotes;
                 }
             } else if (c == ',' && !inQuotes) {
-                parts.add(cur.toString().trim());
+                // Limpiar espacios normales (trim) Y espacios de no ruptura (\u00A0)
+                parts.add(cur.toString().trim().replace("\u00A0", "").trim());
                 cur.setLength(0);
             } else {
-                cur.append(c); // hazlo bien, con este formato y no te dejes variables sin poner
+                cur.append(c);
             }
         }
-        parts.add(cur.toString().trim());
+        // Limpiar también la última parte
+        parts.add(cur.toString().trim().replace("\u00A0", "").trim());
+        
         // quitar BOM si existe en la primera celda
         if (!parts.isEmpty()) {
             String first = parts.get(0);
@@ -220,14 +258,13 @@ public class IndiceAirbnb {
         return parts.toArray(new String[0]);
     }
 
-    // Lee el siguiente registro completo del BufferedReader. Algunas celdas pueden contener
-    // saltos de línea dentro de comillas, por lo que se acumulan líneas hasta que el
-    // número de comillas es par (registro balanceado).
+    // Lee el siguiente registro completo del BufferedReader.
     private static String readNextRecord(BufferedReader br) throws IOException {
         String line = br.readLine();
         if (line == null) return null;
         StringBuilder sb = new StringBuilder(line);
-        while (countQuotes(sb.toString()) % 2 != 0) {
+        // Sigue leyendo líneas si el número de comillas (reales) es impar
+        while (countRealQuotes(sb.toString()) % 2 != 0) { 
             String next = br.readLine();
             if (next == null) break;
             sb.append('\n').append(next);
@@ -235,9 +272,19 @@ public class IndiceAirbnb {
         return sb.toString();
     }
 
-    private static int countQuotes(String s) {
-        int c = 0;
-        for (int i = 0; i < s.length(); i++) if (s.charAt(i) == '"') c++;
-        return c;
+    private static int countRealQuotes(String s) {
+        int quotes = 0;
+        if (s == null) return 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') {
+                if (i + 1 < s.length() && s.charAt(i + 1) == '"') {
+                    i++; // Es una comilla escapada (""), la saltamos
+                } else {
+                    quotes++; // Es una comilla de límite
+                }
+            }
+        }
+        return quotes;
     }
 }
