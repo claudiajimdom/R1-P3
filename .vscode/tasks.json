@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-fat-jar",
+            "type": "shell",
+            "command": "rm -rf out && mkdir -p out && javac -cp \"lib/*\" -d out src/IndiceAirbnb.java && cd out && jar xf ../lib/commons-lang3-3.12.0.jar && jar xf ../lib/lucene-core-10.3.1.jar && jar xf ../lib/lucene-analysis-common-10.3.1.jar && jar xf ../lib/lucene-suggest-10.3.1.jar && cd .. && echo \"Main-Class: IndiceAirbnb\" > MANIFEST.MF && jar cfm indexador.jar MANIFEST.MF -C out .",
+            "problemMatcher": []
+        }
+    ]
+}

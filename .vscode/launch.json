@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Ejecutar Fat JAR Airbnb",
+            "type": "java",
+            "request": "launch",
+            "mainClass": "IndiceAirbnb",
+            "preLaunchTask": "build-fat-jar",
+            "args": "property ./data ./index create"
+        }
+    ]
+}
