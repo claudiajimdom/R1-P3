@@ -1,43 +1,42 @@
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.en.EnglishAnalyzer; 
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
 import org.apache.lucene.store.*;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+
 import java.io.*;
 import java.nio.file.*;
-import java.util.*;
 import java.text.NumberFormat;
+import java.util.*;
 import java.util.Locale;
-
 
 public class IndiceAirbnb {
 
-    // Parseador de números que usa '.' como decimal (Locale.US)
+    // Parseador de números con '.' decimal (Locale.US)
     private static final NumberFormat numberParser = NumberFormat.getInstance(Locale.US);
 
-
     public static void main(String[] args) throws Exception {
-        if (args.length < 3) {
-            System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> [directorioIndice] [modo:create|append]");
+        if (args.length < 4) {
+            System.out.println("Uso: java IndiceAirbnb <tipo: property|host> <directorioDatos> <directorioIndice> <modo:create|append>");
             return;
         }
+
         String tipo = args[0].toLowerCase();
         Path dataDir = Paths.get(args[1]);
         Path indexDir = Paths.get(args[2]);
-        String mode =  args[3].toLowerCase();
+        String mode = args[3].toLowerCase();
 
         if (!Files.isDirectory(dataDir)) {
             System.out.println("Directorio de datos no encontrado: " + dataDir);
             return;
         }
 
-        //el csv está en inglés, así que usamos EnglishAnalyzer
         Analyzer analyzer = new EnglishAnalyzer();
         Directory directory = FSDirectory.open(indexDir);
         IndexWriterConfig config = new IndexWriterConfig(analyzer);
         config.setOpenMode(mode.equals("create") ? OpenMode.CREATE : OpenMode.CREATE_OR_APPEND);
-        // Crear el IndexWriter para escribir datos ene el índice
+
         IndexWriter writer = new IndexWriter(directory, config);
 
         int total = 0;
@@ -66,18 +65,17 @@ public class IndiceAirbnb {
                 if (header == null) continue;
 
                 String[] colsHeader = parseCsvLine(header);
-                // construir mapa de encabezado para búsquedas por nombre
                 Map<String, Integer> headerMap = new HashMap<>();
-                for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
+                for (int i = 0; i < colsHeader.length; i++)
+                    headerMap.put(colsHeader[i].trim().toLowerCase(), i);
 
-        
                 if (!(headerMap.containsKey("id") || headerMap.containsKey("listing_url") || headerMap.containsKey("name"))) {
-                    System.out.println("Omitiendo fichero (no parece properties): " + path + " encabezado=" + Arrays.toString(colsHeader));
+                    System.out.println("Omitiendo fichero (no parece properties): " + path);
                     continue;
                 }
 
                 String record;
-                while ((record = readNextRecord(br)) != null) { 
+                while ((record = readNextRecord(br)) != null) {
                     String[] cols = parseCsvLine(record);
                     Document doc = new Document();
 
@@ -87,10 +85,11 @@ public class IndiceAirbnb {
                     addText(doc, "description", getValue(headerMap, cols, "description"));
                     addText(doc, "neighborhood_overview", getValue(headerMap, cols, "neighborhood_overview"));
                     addString(doc, "neighbourhood_cleansed", getValue(headerMap, cols, "neighbourhood_cleansed"));
-                    addDouble(doc, "latitude", getValue(headerMap, cols, "latitude"));
-                    addDouble(doc, "longitude", getValue(headerMap, cols, "longitude"));
+                    addLatLon(doc,
+                            getValue(headerMap, cols, "latitude"),
+                            getValue(headerMap, cols, "longitude"));
                     addString(doc, "property_type", getValue(headerMap, cols, "property_type"));
-                    addDouble(doc, "bathrooms", getValue(headerMap, cols, "bathrooms"));
+                    addInt(doc, "bathrooms", getValue(headerMap, cols, "bathrooms"));
                     addString(doc, "bathrooms_text", getValue(headerMap, cols, "bathrooms_text"));
                     addInt(doc, "bedrooms", getValue(headerMap, cols, "bedrooms"));
                     addText(doc, "amenities", getValue(headerMap, cols, "amenities"));
@@ -118,16 +117,16 @@ public class IndiceAirbnb {
 
                 String[] colsHeader = parseCsvLine(header);
                 Map<String, Integer> headerMap = new HashMap<>();
-                for (int i = 0; i < colsHeader.length; i++) headerMap.put(colsHeader[i].trim().toLowerCase(), i);
+                for (int i = 0; i < colsHeader.length; i++)
+                    headerMap.put(colsHeader[i].trim().toLowerCase(), i);
 
-                // si no parece fichero de hosts, omitir
                 if (!(headerMap.containsKey("host_url") || headerMap.containsKey("host_name"))) {
-                    System.out.println("Omitiendo fichero (no parece hosts): " + path + " encabezado=" + Arrays.toString(colsHeader));
+                    System.out.println("Omitiendo fichero (no parece hosts): " + path);
                     continue;
                 }
 
                 String line;
-                while ((line = readNextRecord(br)) != null) { // Usar readNextRecord
+                while ((line = readNextRecord(br)) != null) {
                     String[] cols = parseCsvLine(line);
                     Document doc = new Document();
 
@@ -149,25 +148,24 @@ public class IndiceAirbnb {
     }
 
     // ------------------------- MÉTODOS DE APOYO -------------------------
+
     private static void addString(Document doc, String field, String value) {
-        if (value != null && !value.isEmpty()) doc.add(new StringField(field, value, Field.Store.YES));
+        if (value != null && !value.isEmpty())
+            doc.add(new StringField(field, value, Field.Store.YES));
     }
 
     private static void addText(Document doc, String field, String value) {
-        if (value != null && !value.isEmpty()) doc.add(new TextField(field, value, Field.Store.YES));
+        if (value != null && !value.isEmpty())
+            doc.add(new TextField(field, value, Field.Store.YES));
     }
 
     private static void addDouble(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                //Limpia todo lo que no sea número, punto o guion
                 String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    if (clean.endsWith(".")) {
-                        clean = clean.substring(0, clean.length() - 1);
-                    }
+                    if (clean.endsWith(".")) clean = clean.substring(0, clean.length() - 1);
                     if (!clean.isEmpty()) {
-                        // Usa el numberParser (Locale.US) para convertir el string
                         double d = numberParser.parse(clean).doubleValue();
                         doc.add(new DoublePoint(field, d));
                         doc.add(new StoredField(field, d));
@@ -179,18 +177,13 @@ public class IndiceAirbnb {
         }
     }
 
-    // Método addInt 
     private static void addInt(Document doc, String field, String value) {
         try {
             if (value != null && !value.isEmpty()) {
-                //Limpia todo lo que NO sea número, punto o guion
                 String clean = value.replaceAll("[^0-9\\.\\-]", "");
                 if (!clean.isEmpty()) {
-                    if (clean.endsWith(".")) {
-                        clean = clean.substring(0, clean.length() - 1);
-                    }
+                    if (clean.endsWith(".")) clean = clean.substring(0, clean.length() - 1);
                     if (!clean.isEmpty()) {
-                        // Usa el numberParser (Locale.US)
                         int i = numberParser.parse(clean).intValue();
                         doc.add(new IntPoint(field, i));
                         doc.add(new StoredField(field, i));
@@ -202,13 +195,41 @@ public class IndiceAirbnb {
         }
     }
 
+    // NUEVO: Método para añadir coordenadas geográficas correctamente
+    private static void addLatLon(Document doc, String latStr, String lonStr) {
+        try {
+            if (latStr != null && lonStr != null &&
+                !latStr.isEmpty() && !lonStr.isEmpty()) {
+
+                String cleanLat = latStr.replaceAll("[^0-9\\.\\-]", "");
+                String cleanLon = lonStr.replaceAll("[^0-9\\.\\-]", "");
+
+                if (!cleanLat.isEmpty() && !cleanLon.isEmpty()) {
+                    double lat = numberParser.parse(cleanLat).doubleValue();
+                    double lon = numberParser.parse(cleanLon).doubleValue();
+
+                    // Index geoespacial
+                    doc.add(new LatLonPoint("location", lat, lon));
+
+                    // Guardar valores originales
+                    doc.add(new StoredField("latitude", lat));
+                    doc.add(new StoredField("longitude", lon));
+
+                    // Para ordenación por distancia
+                    doc.add(new LatLonDocValuesField("location_sort", lat, lon));
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parseando lat/lon: " + latStr + "," + lonStr + " -> " + e.getMessage());
+        }
+    }
+
     private static String getValue(Map<String, Integer> headerMap, String[] cols, String name) {
         Integer idx = headerMap.get(name.toLowerCase());
         if (idx != null && idx < cols.length) return cols[idx].trim();
         return null;
     }
 
-    // parsea CSV simple con soporte de comillas dobles y campos con comas
     private static String[] parseCsvLine(String line) {
         if (line == null) return new String[0];
         List<String> parts = new ArrayList<>();
@@ -219,22 +240,19 @@ public class IndiceAirbnb {
             if (c == '"') {
                 if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
                     cur.append('"');
-                    i++; // escaped quote
+                    i++;
                 } else {
                     inQuotes = !inQuotes;
                 }
             } else if (c == ',' && !inQuotes) {
-                // Limpiar espacios normales (trim) Y espacios de no ruptura (\u00A0)
                 parts.add(cur.toString().trim().replace("\u00A0", "").trim());
                 cur.setLength(0);
             } else {
                 cur.append(c);
             }
         }
-        // Limpiar también la última parte
         parts.add(cur.toString().trim().replace("\u00A0", "").trim());
-        
-        // quitar BOM si existe en la primera celda
+
         if (!parts.isEmpty()) {
             String first = parts.get(0);
             if (first.startsWith("\uFEFF")) parts.set(0, first.substring(1));
@@ -242,13 +260,11 @@ public class IndiceAirbnb {
         return parts.toArray(new String[0]);
     }
 
-    // Lee el siguiente registro completo del BufferedReader.
     private static String readNextRecord(BufferedReader br) throws IOException {
         String line = br.readLine();
         if (line == null) return null;
         StringBuilder sb = new StringBuilder(line);
-        // Sigue leyendo líneas si el número de comillas (reales) es impar
-        while (countRealQuotes(sb.toString()) % 2 != 0) { 
+        while (countRealQuotes(sb.toString()) % 2 != 0) {
             String next = br.readLine();
             if (next == null) break;
             sb.append('\n').append(next);
@@ -262,11 +278,8 @@ public class IndiceAirbnb {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             if (c == '"') {
-                if (i + 1 < s.length() && s.charAt(i + 1) == '"') {
-                    i++; // Es una comilla escapada (""), la saltamos
-                } else {
-                    quotes++; // Es una comilla de límite
-                }
+                if (i + 1 < s.length() && s.charAt(i + 1) == '"') i++;
+                else quotes++;
             }
         }
         return quotes;
